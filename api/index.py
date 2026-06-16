@@ -10,8 +10,23 @@ request. It wires together:
 Vercel looks for the WSGI `app` variable in this file.
 """
 
+import ssl
 import sys
 import os
+
+# Python 3.12 raises SSLEOFError when a server closes the connection without
+# sending a TLS close_notify alert. Slack's API does this routinely. Patch the
+# default SSL context so these closures are treated as clean EOF, restoring
+# pre-3.12 behaviour without weakening certificate verification.
+if hasattr(ssl, "OP_IGNORE_UNEXPECTED_EOF"):
+    _orig_create_default_context = ssl.create_default_context
+
+    def _patched_create_default_context(*args, **kwargs):
+        ctx = _orig_create_default_context(*args, **kwargs)
+        ctx.options |= ssl.OP_IGNORE_UNEXPECTED_EOF
+        return ctx
+
+    ssl.create_default_context = _patched_create_default_context
 
 # Ensure the project root is on sys.path so `bot.*` imports resolve.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
