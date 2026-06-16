@@ -258,6 +258,13 @@ def list_posts() -> list[dict]:
     return [_doc_to_post(d) for d in docs]
 
 
+def delete_post(post_id: str) -> None:
+    try:
+        _posts().delete_one({"_id": ObjectId(post_id)})
+    except Exception:
+        pass
+
+
 def create_post(
     owner_user_id: str,
     title: str,

@@ -268,6 +268,15 @@ def create_post():
         return redirect(f"/posts?error={str(exc)}", 303)
 
 
+@app.route("/api/posts/<post_id>/delete", methods=["POST"])
+def delete_post(post_id):
+    user = _current_user()
+    if not user:
+        return redirect("/auth?next=/posts", 303)
+    store.delete_post(post_id)
+    return redirect("/posts?success=Post+deleted.", 303)
+
+
 @app.route("/api/catalog")
 @app.route("/api/mock-data")
 def catalog():
@@ -474,6 +483,114 @@ _SHARED_HEAD = """\
   .slack-badge svg { flex-shrink: 0; }
 </style>"""
 
+_POSTS_PAGE = ("""\
+<!doctype html>
+<html lang="en">
+<head>""" + _SHARED_HEAD + """<title>Posts — Qwoted</title>
+<style>
+  table { width:100%; border-collapse:collapse; font-size:.875rem; }
+  th { text-align:left; padding:.5rem .75rem; background:#f5f5f5; border-bottom:2px solid #eee; font-weight:600; }
+  td { padding:.5rem .75rem; border-bottom:1px solid #eee; vertical-align:top; }
+  tr:hover td { background:#fafafa; }
+  .badge { display:inline-block; padding:.2rem .5rem; border-radius:4px; font-size:.75rem; font-weight:500; }
+  .badge-experts { background:#EDE9FE; color:#5B21B6; }
+  .badge-products { background:#D1FAE5; color:#065F46; }
+  .wide { max-width:960px; }
+  nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; }
+  nav h1 { font-size:1.1rem; font-weight:600; }
+  details { margin-top:1.5rem; border:1px solid #eee; border-radius:8px; padding:1rem; }
+  summary { font-weight:600; cursor:pointer; font-size:.9375rem; }
+  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-top:.75rem; }
+  .form-row.full { grid-template-columns:1fr; }
+  select, textarea { width:100%; padding:.5rem .75rem; border:1px solid #ddd; border-radius:6px; font-size:.875rem; font-family:inherit; }
+  textarea { resize:vertical; min-height:64px; }
+  .del-btn { background:none; border:none; color:#dc2626; cursor:pointer; font-size:.875rem; padding:.25rem .5rem; }
+  .del-btn:hover { text-decoration:underline; }
+</style>
+</head>
+<body style="background:#f5f5f5;padding:1.5rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<div class="wide" style="margin:0 auto;">
+  <nav>
+    <h1>📋 Qwoted — Post Catalog</h1>
+    <span style="font-size:.875rem;color:#555;">Signed in as {{ user.email }} &nbsp;·&nbsp;
+      <form method="POST" action="/api/auth/logout" style="display:inline"><button style="background:none;border:none;color:#4A90E2;cursor:pointer;font-size:.875rem;padding:0">Sign out</button></form>
+    </span>
+  </nav>
+
+  {% if error %}<div class="alert alert-error" style="padding:.75rem 1rem;background:#FEE2E2;color:#991B1B;border-radius:6px;margin-bottom:1rem;font-size:.875rem;">{{ error }}</div>{% endif %}
+  {% if success %}<div class="alert alert-success" style="padding:.75rem 1rem;background:#D1FAE5;color:#065F46;border-radius:6px;margin-bottom:1rem;font-size:.875rem;">{{ success }}</div>{% endif %}
+
+  <table>
+    <thead>
+      <tr><th>Title</th><th>Mode</th><th>Summary</th><th>Category</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for p in posts %}
+      <tr>
+        <td><strong>{{ p.title }}</strong></td>
+        <td><span class="badge badge-{{ p.mode }}">{{ p.mode }}</span></td>
+        <td style="color:#555;">{{ p.summary[:80] }}{% if p.summary|length > 80 %}…{% endif %}</td>
+        <td style="color:#555;">{{ p.category or '—' }}</td>
+        <td style="color:#555;">{{ p.status }}</td>
+        <td>
+          <form method="POST" action="/api/posts/{{ p.id }}/delete" onsubmit="return confirm('Delete this post?')">
+            <button class="del-btn" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" style="color:#999;text-align:center;padding:2rem;">No posts yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <details>
+    <summary>+ Add new post</summary>
+    <form method="POST" action="/api/posts" style="margin-top:1rem;">
+      <div class="form-row full">
+        <div>
+          <label style="font-size:.875rem;font-weight:500;display:block;margin-bottom:.25rem;">Title *</label>
+          <input type="text" name="title" required style="width:100%;padding:.5rem .75rem;border:1px solid #ddd;border-radius:6px;font-size:.875rem;">
+        </div>
+      </div>
+      <div class="form-row full" style="margin-top:.75rem;">
+        <div>
+          <label style="font-size:.875rem;font-weight:500;display:block;margin-bottom:.25rem;">Summary</label>
+          <textarea name="summary"></textarea>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:.75rem;">
+        <div>
+          <label style="font-size:.875rem;font-weight:500;display:block;margin-bottom:.25rem;">Mode *</label>
+          <select name="mode">
+            <option value="experts">experts</option>
+            <option value="products">products</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.875rem;font-weight:500;display:block;margin-bottom:.25rem;">Category</label>
+          <input type="text" name="category" style="width:100%;padding:.5rem .75rem;border:1px solid #ddd;border-radius:6px;font-size:.875rem;">
+        </div>
+        <div>
+          <label style="font-size:.875rem;font-weight:500;display:block;margin-bottom:.25rem;">Deadline</label>
+          <input type="text" name="deadline" placeholder="e.g. Friday" style="width:100%;padding:.5rem .75rem;border:1px solid #ddd;border-radius:6px;font-size:.875rem;">
+        </div>
+        <div>
+          <label style="font-size:.875rem;font-weight:500;display:block;margin-bottom:.25rem;">Status</label>
+          <select name="status">
+            <option value="open">open</option>
+            <option value="closed">closed</option>
+          </select>
+        </div>
+      </div>
+      <button type="submit" style="margin-top:1rem;padding:.5rem 1.25rem;background:#4A90E2;color:#fff;border:none;border-radius:6px;font-size:.875rem;font-weight:500;cursor:pointer;">Add post</button>
+    </form>
+  </details>
+</div>
+</body>
+</html>
+""")
+
 _AUTH_PAGE = ("""\
 <!doctype html>
 <html lang="en">
@@ -575,6 +692,17 @@ def auth_page():
     error = flask_request.args.get("error", "")
     next_url = flask_request.args.get("next", "/connect")
     return render_template_string(_AUTH_PAGE, tab=tab, error=error, next_url=next_url)
+
+
+@app.route("/posts")
+def posts_page():
+    user = _current_user()
+    if not user:
+        return redirect("/auth?next=/posts", 302)
+    error = flask_request.args.get("error", "")
+    success = flask_request.args.get("success", "")
+    posts = store.list_posts()
+    return render_template_string(_POSTS_PAGE, user=user, posts=posts, error=error, success=success)
 
 
 @app.route("/connect")
