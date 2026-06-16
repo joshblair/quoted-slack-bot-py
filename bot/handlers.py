@@ -23,7 +23,7 @@ def _build_connect_url(base_url: str, team_id: str, user_id: str) -> str:
     return f"{base_url.rstrip('/')}/connect?slack_team_id={team_id}&slack_user_id={user_id}"
 
 
-def _menu_blocks() -> list[dict]:
+def _menu_blocks(channel_id: str = "") -> list[dict]:
     return [
         {
             "type": "section",
@@ -39,13 +39,13 @@ def _menu_blocks() -> list[dict]:
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Call for Experts"},
                     "action_id": "quoted_call_experts",
-                    "value": "experts",
+                    "value": json.dumps({"mode": "experts", "channel_id": channel_id}),
                 },
                 {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Call for Products"},
                     "action_id": "quoted_call_products",
-                    "value": "products",
+                    "value": json.dumps({"mode": "products", "channel_id": channel_id}),
                 },
             ],
         },
@@ -205,9 +205,10 @@ def register_handlers(app: App) -> None:
     def handle_slash_command(ack, command):
         team_id = command.get("team_id", "")
         user_id = command.get("user_id", "")
+        channel_id = command.get("channel_id", "")
         linked = store.find_linked_user(team_id, user_id)
         if linked:
-            ack({"blocks": _menu_blocks(), "text": "Choose Call for Experts or Call for Products."})
+            ack({"blocks": _menu_blocks(channel_id), "text": "Choose Call for Experts or Call for Products."})
         else:
             connect_url = _build_connect_url(config.app_base_url, team_id, user_id)
             ack({"blocks": _connect_blocks(connect_url), "text": "Connect your Qwoted account to continue."})
@@ -240,7 +241,13 @@ def register_handlers(app: App) -> None:
         team_id = body.get("team", {}).get("id", "")
         user_id = body.get("user", {}).get("id", "")
         trigger_id = body.get("trigger_id", "")
-        channel_id = body.get("container", {}).get("channel_id")
+        # Prefer channel_id embedded in the button value (set by slash command),
+        # fall back to container.channel_id for messages posted via chat.postMessage.
+        try:
+            btn_value = json.loads((body.get("actions") or [{}])[0].get("value", "{}"))
+            channel_id = btn_value.get("channel_id") or body.get("container", {}).get("channel_id")
+        except Exception:
+            channel_id = body.get("container", {}).get("channel_id")
 
         # Call views_open immediately — trigger_id expires in 3 seconds.
         # Log after so MongoDB latency doesn't consume the window.
