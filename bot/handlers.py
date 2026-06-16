@@ -310,11 +310,24 @@ def register_handlers(app: App) -> None:
             details={
                 "mode": mode,
                 "title": title,
+                "channelId": channel_id,
                 "requestId": copy["requestId"],
                 "requestUrl": copy["requestUrl"],
                 "matchedPost": {"id": matched_post.get("id"), "title": matched_post.get("title"), "score": copy["matchedPostScore"]} if matched_post else None,
             },
         )
+
+        if not channel_id:
+            logger.warning("modal submit: channel_id missing from private_metadata, cannot post to channel")
+            store.append_action_log(
+                action="slack.reply_delivery",
+                source="slack",
+                summary="Skipped channel post: channel_id missing.",
+                status="error",
+                slack_team_id=team_id,
+                slack_user_id=user_id,
+                details={"error": "channel_id missing from modal private_metadata"},
+            )
 
         if channel_id:
             try:
