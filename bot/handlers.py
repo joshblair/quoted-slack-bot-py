@@ -272,7 +272,19 @@ def register_handlers(app: App) -> None:
     @app.view("quoted_request_submit")
     def handle_modal_submit(ack, body, client, view):
         ack()
+        try:
+            _do_modal_submit(client, view)
+        except Exception as exc:
+            logger.error("modal submit error: %s", exc, exc_info=True)
+            store.append_action_log(
+                action="slack.modal_submit",
+                source="slack",
+                summary="Modal submit crashed.",
+                status="error",
+                details={"error": str(exc)},
+            )
 
+    def _do_modal_submit(client, view):
         metadata = json.loads(view.get("private_metadata", "{}"))
         mode = metadata.get("mode", "experts")
         team_id = metadata.get("teamId", "")
