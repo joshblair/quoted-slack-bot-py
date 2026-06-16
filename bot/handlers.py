@@ -201,7 +201,25 @@ def register_handlers(app: App) -> None:
     @app.command("/quoted")
     def handle_slash_command(ack, command, respond):
         ack()
-        respond(text="✅ Debug: /quoted received. respond() is working.")
+        team_id = command.get("team_id", "")
+        user_id = command.get("user_id", "")
+
+        linked = store.find_linked_user(team_id, user_id)
+
+        if linked:
+            respond(blocks=_menu_blocks(), text="Choose Call for Experts or Call for Products.")
+        else:
+            connect_url = _build_connect_url(config.app_base_url, team_id, user_id)
+            respond(blocks=_connect_blocks(connect_url), text="Connect your Qwoted account to continue.")
+
+        store.append_action_log(
+            action="slack.command",
+            source="slack",
+            summary="Slack slash command opened the workflow menu." if linked else "Slack slash command showed connect prompt.",
+            slack_team_id=team_id,
+            slack_user_id=user_id,
+            details={"command": command.get("command"), "linked": bool(linked)},
+        )
 
     # ------------------------------------------------------------------
     # Button: Call for Experts
