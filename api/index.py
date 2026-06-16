@@ -362,7 +362,7 @@ def demo_notification():
 # HTML pages
 # ---------------------------------------------------------------------------
 
-_BASE_STYLE = """
+_SHARED_HEAD = """\
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
@@ -398,13 +398,12 @@ _BASE_STYLE = """
     background: #f0f4ff; border: 1px solid #c7d7f5; border-radius: 6px;
     padding: .75rem 1rem; margin-bottom: 1.25rem; font-size: .875rem; color: #2c3e6b; }
   .slack-badge svg { flex-shrink: 0; }
-</style>
-"""
+</style>"""
 
-_AUTH_PAGE = """
+_AUTH_PAGE = ("""\
 <!doctype html>
 <html lang="en">
-<head>{{ base_style }}<title>Sign in — Qwoted</title></head>
+<head>""" + _SHARED_HEAD + """<title>Sign in — Qwoted</title></head>
 <body>
 <div class="card">
   <h1>Qwoted</h1>
@@ -441,12 +440,12 @@ _AUTH_PAGE = """
 </div>
 </body>
 </html>
-"""
+""")
 
-_CONNECT_PAGE = """
+_CONNECT_PAGE = ("""\
 <!doctype html>
 <html lang="en">
-<head>{{ base_style }}<title>Connect Slack — Qwoted</title></head>
+<head>""" + _SHARED_HEAD + """<title>Connect Slack — Qwoted</title></head>
 <body>
 <div class="card">
   <h1>Connect your Slack account</h1>
@@ -489,7 +488,7 @@ _CONNECT_PAGE = """
 </div>
 </body>
 </html>
-"""
+""")
 
 
 @app.route("/auth")
@@ -501,13 +500,7 @@ def auth_page():
     tab = flask_request.args.get("tab", "login")
     error = flask_request.args.get("error", "")
     next_url = flask_request.args.get("next", "/connect")
-    return render_template_string(
-        _AUTH_PAGE,
-        base_style=_BASE_STYLE,
-        tab=tab,
-        error=error,
-        next_url=next_url,
-    )
+    return render_template_string(_AUTH_PAGE, tab=tab, error=error, next_url=next_url)
 
 
 @app.route("/connect")
@@ -523,12 +516,7 @@ def connect_page():
         else "/connect"
     )
     return render_template_string(
-        _CONNECT_PAGE,
-        base_style=_BASE_STYLE,
-        user=user,
-        slack_team_id=slack_team_id,
-        slack_user_id=slack_user_id,
-        connect_url=connect_url,
-        error=error,
-        success=success,
+        _CONNECT_PAGE, user=user, slack_team_id=slack_team_id,
+        slack_user_id=slack_user_id, connect_url=connect_url,
+        error=error, success=success,
     )
