@@ -242,21 +242,14 @@ def register_handlers(app: App) -> None:
         trigger_id = body.get("trigger_id", "")
         channel_id = body.get("container", {}).get("channel_id")
 
-        store.append_action_log(
-            action="slack.button_click",
-            source="slack",
-            summary=f"Opened {'Call for Experts' if mode == 'experts' else 'Call for Products'} modal.",
-            slack_team_id=team_id,
-            slack_user_id=user_id,
-            details={"mode": mode},
-        )
-
+        # Call views_open immediately — trigger_id expires in 3 seconds.
+        # Log after so MongoDB latency doesn't consume the window.
         try:
             client.views_open(trigger_id=trigger_id, view=_build_modal(mode, team_id, user_id, channel_id))
             store.append_action_log(
-                action="slack.modal_open",
+                action="slack.button_click",
                 source="slack",
-                summary="Opened Slack modal.",
+                summary=f"Opened {'Call for Experts' if mode == 'experts' else 'Call for Products'} modal.",
                 slack_team_id=team_id,
                 slack_user_id=user_id,
                 details={"mode": mode},
@@ -264,9 +257,9 @@ def register_handlers(app: App) -> None:
         except Exception as exc:
             logger.error("Failed to open modal: %s", exc)
             store.append_action_log(
-                action="slack.modal_open",
+                action="slack.button_click",
                 source="slack",
-                summary="Failed to open Slack modal.",
+                summary="Failed to open modal.",
                 status="error",
                 slack_team_id=team_id,
                 slack_user_id=user_id,
