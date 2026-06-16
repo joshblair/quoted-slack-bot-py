@@ -346,13 +346,18 @@ def create_session(user_id: str) -> str:
 def find_user_by_session(token: Optional[str]) -> Optional[dict]:
     if not token:
         return None
-    session = _sessions().find_one({"token": token})
-    if not session:
-        return None
-    if session["expiresAt"] < datetime.now(timezone.utc):
-        _sessions().delete_one({"token": token})
-        return None
     try:
+        session = _sessions().find_one({"token": token})
+        if not session:
+            return None
+        expires_at = session["expiresAt"]
+        now = datetime.now(timezone.utc)
+        # Handle sessions created by the TypeScript app with naive datetimes.
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < now:
+            _sessions().delete_one({"token": token})
+            return None
         doc = _users().find_one({"_id": ObjectId(session["userId"])})
     except Exception:
         return None
