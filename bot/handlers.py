@@ -264,6 +264,15 @@ def register_handlers(app: App) -> None:
                 slack_user_id=user_id,
                 details={"error": str(exc)},
             )
+            # On cold start the trigger_id expires — nudge the user to click again.
+            try:
+                client.chat_postEphemeral(
+                    channel=channel_id or team_id,
+                    user=user_id,
+                    text="⏱ The bot was starting up. Please click the button again.",
+                )
+            except Exception:
+                pass
             return
 
         # views_open succeeded — now warm MongoDB (user is filling the form).
