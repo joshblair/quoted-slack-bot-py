@@ -16,7 +16,7 @@ import os
 # Ensure the project root is on sys.path so `bot.*` imports resolve.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from flask import Flask, jsonify, request as flask_request, make_response, redirect
+from flask import Flask, jsonify, request as flask_request, make_response, redirect, render_template_string
 from slack_bolt import App as BoltApp
 from slack_bolt.adapter.flask import SlackRequestHandler
 
@@ -356,3 +356,179 @@ def demo_notification():
         posts=posts,
     )
     return jsonify(copy)
+
+
+# ---------------------------------------------------------------------------
+# HTML pages
+# ---------------------------------------------------------------------------
+
+_BASE_STYLE = """
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f5f5f5; color: #111; min-height: 100vh;
+         display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.1);
+          padding: 2rem; width: 100%; max-width: 400px; }
+  h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1.5rem; }
+  label { display: block; font-size: .875rem; font-weight: 500; margin-bottom: .25rem; margin-top: 1rem; }
+  input[type=text], input[type=email], input[type=password] {
+    width: 100%; padding: .5rem .75rem; border: 1px solid #ddd; border-radius: 6px;
+    font-size: .9375rem; }
+  input:focus { outline: 2px solid #4A90E2; outline-offset: -1px; }
+  button[type=submit] { margin-top: 1.25rem; width: 100%; padding: .625rem;
+    background: #4A90E2; color: #fff; border: none; border-radius: 6px;
+    font-size: .9375rem; font-weight: 500; cursor: pointer; }
+  button[type=submit]:hover { background: #357ABD; }
+  .alert { padding: .75rem 1rem; border-radius: 6px; font-size: .875rem; margin-bottom: 1rem; }
+  .alert-error { background: #FEE2E2; color: #991B1B; }
+  .alert-success { background: #D1FAE5; color: #065F46; }
+  .divider { border: none; border-top: 1px solid #eee; margin: 1.5rem 0; }
+  .link-btn { display: block; text-align: center; margin-top: .75rem;
+    font-size: .875rem; color: #4A90E2; text-decoration: none; }
+  .link-btn:hover { text-decoration: underline; }
+  .tab-toggle { display: flex; gap: .5rem; margin-bottom: 1.5rem; }
+  .tab-toggle a { flex: 1; text-align: center; padding: .5rem;
+    border: 1px solid #ddd; border-radius: 6px; font-size: .875rem;
+    text-decoration: none; color: #555; }
+  .tab-toggle a.active { background: #4A90E2; color: #fff; border-color: #4A90E2; font-weight: 500; }
+  .slack-badge { display: flex; align-items: center; gap: .5rem;
+    background: #f0f4ff; border: 1px solid #c7d7f5; border-radius: 6px;
+    padding: .75rem 1rem; margin-bottom: 1.25rem; font-size: .875rem; color: #2c3e6b; }
+  .slack-badge svg { flex-shrink: 0; }
+</style>
+"""
+
+_AUTH_PAGE = """
+<!doctype html>
+<html lang="en">
+<head>{{ base_style }}<title>Sign in — Qwoted</title></head>
+<body>
+<div class="card">
+  <h1>Qwoted</h1>
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+  <div class="tab-toggle">
+    <a href="/auth?tab=login&next={{ next_url }}" class="{{ 'active' if tab == 'login' else '' }}">Sign in</a>
+    <a href="/auth?tab=register&next={{ next_url }}" class="{{ 'active' if tab == 'register' else '' }}">Create account</a>
+  </div>
+
+  {% if tab == 'login' %}
+  <form method="POST" action="/api/auth/login">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required autocomplete="email">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password">
+    <button type="submit">Sign in</button>
+  </form>
+  <a class="link-btn" href="/auth?tab=register&next={{ next_url }}">No account? Create one →</a>
+
+  {% else %}
+  <form method="POST" action="/api/auth/register">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" required autocomplete="name">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required autocomplete="email">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required autocomplete="new-password">
+    <button type="submit">Create account</button>
+  </form>
+  <a class="link-btn" href="/auth?tab=login&next={{ next_url }}">Already have an account? Sign in →</a>
+  {% endif %}
+</div>
+</body>
+</html>
+"""
+
+_CONNECT_PAGE = """
+<!doctype html>
+<html lang="en">
+<head>{{ base_style }}<title>Connect Slack — Qwoted</title></head>
+<body>
+<div class="card">
+  <h1>Connect your Slack account</h1>
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+  {% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
+
+  {% if success %}
+    <p style="font-size:.875rem;color:#555;margin-bottom:1rem;">
+      Your Slack account is linked. You can close this window and return to Slack.
+    </p>
+  {% elif not user %}
+    <p style="font-size:.875rem;color:#555;margin-bottom:1.25rem;">
+      Sign in to your Qwoted account to link it to Slack.
+    </p>
+    <div class="slack-badge">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"/><path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/><path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/></svg>
+      Slack user: {{ slack_user_id }} / Team: {{ slack_team_id }}
+    </div>
+    <a class="link-btn" href="/auth?next={{ connect_url }}" style="display:block;width:100%;text-align:center;padding:.625rem;background:#4A90E2;color:#fff;border-radius:6px;font-weight:500;text-decoration:none;font-size:.9375rem;">Sign in to Qwoted</a>
+    <a class="link-btn" href="/auth?tab=register&next={{ connect_url }}">No account? Create one →</a>
+  {% else %}
+    <p style="font-size:.875rem;color:#555;margin-bottom:1.25rem;">
+      Signed in as <strong>{{ user.email }}</strong>. Click below to link your Slack account.
+    </p>
+    <div class="slack-badge">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"/><path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/><path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/></svg>
+      Slack user: {{ slack_user_id }} / Team: {{ slack_team_id }}
+    </div>
+    <form method="POST" action="/api/link-slack">
+      <input type="hidden" name="slack_team_id" value="{{ slack_team_id }}">
+      <input type="hidden" name="slack_user_id" value="{{ slack_user_id }}">
+      <input type="hidden" name="next" value="{{ connect_url }}">
+      <button type="submit">Link Slack account</button>
+    </form>
+    <hr class="divider">
+    <form method="POST" action="/api/auth/logout" style="margin-top:0">
+      <button type="submit" style="width:100%;padding:.5rem;background:#fff;color:#555;border:1px solid #ddd;border-radius:6px;font-size:.875rem;cursor:pointer;">Sign out</button>
+    </form>
+  {% endif %}
+</div>
+</body>
+</html>
+"""
+
+
+@app.route("/auth")
+def auth_page():
+    user = _current_user()
+    if user:
+        next_url = flask_request.args.get("next", "/connect")
+        return redirect(next_url, 302)
+    tab = flask_request.args.get("tab", "login")
+    error = flask_request.args.get("error", "")
+    next_url = flask_request.args.get("next", "/connect")
+    return render_template_string(
+        _AUTH_PAGE,
+        base_style=_BASE_STYLE,
+        tab=tab,
+        error=error,
+        next_url=next_url,
+    )
+
+
+@app.route("/connect")
+def connect_page():
+    slack_team_id = flask_request.args.get("slack_team_id", "")
+    slack_user_id = flask_request.args.get("slack_user_id", "")
+    error = flask_request.args.get("error", "")
+    success = flask_request.args.get("success", "")
+    user = _current_user()
+    connect_url = (
+        f"/connect?slack_team_id={slack_team_id}&slack_user_id={slack_user_id}"
+        if slack_team_id and slack_user_id
+        else "/connect"
+    )
+    return render_template_string(
+        _CONNECT_PAGE,
+        base_style=_BASE_STYLE,
+        user=user,
+        slack_team_id=slack_team_id,
+        slack_user_id=slack_user_id,
+        connect_url=connect_url,
+        error=error,
+        success=success,
+    )
