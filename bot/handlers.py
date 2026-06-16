@@ -197,21 +197,17 @@ def register_handlers(app: App) -> None:
 
     # ------------------------------------------------------------------
     # /quoted slash command
+    # ack() must return within 3 s; all heavy work runs in the lazy fn.
     # ------------------------------------------------------------------
-    @app.command("/quoted")
-    def handle_slash_command(ack, command, respond):
-        ack()
+    def _slash_command_work(respond, command):
         team_id = command.get("team_id", "")
         user_id = command.get("user_id", "")
-
         linked = store.find_linked_user(team_id, user_id)
-
         if linked:
             respond(blocks=_menu_blocks(), text="Choose Call for Experts or Call for Products.")
         else:
             connect_url = _build_connect_url(config.app_base_url, team_id, user_id)
             respond(blocks=_connect_blocks(connect_url), text="Connect your Qwoted account to continue.")
-
         store.append_action_log(
             action="slack.command",
             source="slack",
@@ -221,21 +217,23 @@ def register_handlers(app: App) -> None:
             details={"command": command.get("command"), "linked": bool(linked)},
         )
 
+    app.command("/quoted")(ack=lambda ack: ack(), lazy=[_slash_command_work])
+
     # ------------------------------------------------------------------
     # Button: Call for Experts
     # ------------------------------------------------------------------
-    @app.action("quoted_call_experts")
-    def handle_experts_button(ack, body, client):
-        ack()
+    def _experts_lazy(body, client):
         _open_modal(body, client, "experts")
+
+    app.action("quoted_call_experts")(ack=lambda ack: ack(), lazy=[_experts_lazy])
 
     # ------------------------------------------------------------------
     # Button: Call for Products
     # ------------------------------------------------------------------
-    @app.action("quoted_call_products")
-    def handle_products_button(ack, body, client):
-        ack()
+    def _products_lazy(body, client):
         _open_modal(body, client, "products")
+
+    app.action("quoted_call_products")(ack=lambda ack: ack(), lazy=[_products_lazy])
 
     def _open_modal(body: dict, client, mode: str) -> None:
         team_id = body.get("team", {}).get("id", "")
