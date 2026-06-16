@@ -42,20 +42,19 @@ def _db():
 
 def _users() -> Collection:
     col = _db()["users"]
-    col.create_index("email", unique=True, background=True)
+    col.create_index("email", unique=True)
     col.create_index(
         [("slackTeamId", 1), ("slackUserId", 1)],
         unique=True,
         sparse=True,
-        background=True,
     )
     return col
 
 
 def _sessions() -> Collection:
     col = _db()["sessions"]
-    col.create_index("token", unique=True, background=True)
-    col.create_index("expiresAt", expireAfterSeconds=0, background=True)
+    col.create_index("token", unique=True)
+    col.create_index("expiresAt", expireAfterSeconds=0)
     return col
 
 

@@ -109,6 +109,11 @@ def slack_interactions():
 # Health & catalog
 # ---------------------------------------------------------------------------
 
+@app.route("/")
+def root():
+    return redirect("/api", 302)
+
+
 @app.route("/api/health")
 def health():
     return jsonify({"ok": True})
