@@ -45,6 +45,14 @@ from bot.handlers import register_handlers
 
 config = get_config()
 
+# Pre-warm the MongoDB connection at module load so it's ready before any
+# request handler runs. Cold starts pay this cost once; warm requests don't.
+try:
+    from bot import store as _store
+    _store._get_client().admin.command("ping")
+except Exception:
+    pass
+
 bolt_app = BoltApp(
     token=config.slack_bot_token or None,
     signing_secret=config.slack_signing_secret or None,
