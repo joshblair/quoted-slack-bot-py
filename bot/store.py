@@ -20,6 +20,7 @@ from typing import Any, Optional
 from bson import ObjectId
 from pymongo import MongoClient, DESCENDING
 from pymongo.collection import Collection
+from pymongo.errors import OperationFailure
 
 from bot.config import get_config
 
@@ -40,21 +41,24 @@ def _db():
     return _get_client().get_default_database()
 
 
+def _try_create_index(col: Collection, *args, **kwargs) -> None:
+    try:
+        col.create_index(*args, **kwargs)
+    except OperationFailure:
+        pass
+
+
 def _users() -> Collection:
     col = _db()["users"]
-    col.create_index("email", unique=True)
-    col.create_index(
-        [("slackTeamId", 1), ("slackUserId", 1)],
-        unique=True,
-        sparse=True,
-    )
+    _try_create_index(col, "email", unique=True)
+    _try_create_index(col, [("slackTeamId", 1), ("slackUserId", 1)], unique=True, sparse=True)
     return col
 
 
 def _sessions() -> Collection:
     col = _db()["sessions"]
-    col.create_index("token", unique=True)
-    col.create_index("expiresAt", expireAfterSeconds=0)
+    _try_create_index(col, "token", unique=True)
+    _try_create_index(col, "expiresAt", expireAfterSeconds=0)
     return col
 
 
