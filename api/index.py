@@ -10,6 +10,9 @@ request. It wires together:
 Vercel looks for the WSGI `app` variable in this file.
 """
 
+import hashlib
+import hmac
+import json
 import ssl
 import sys
 import os
@@ -115,8 +118,64 @@ def slack_commands():
     return slack_handler.handle(flask_request)
 
 
+_BUTTON_ACTION_IDS = {"quoted_call_experts", "quoted_call_products"}
+
+
+def _verify_slack_signature(body: bytes, timestamp: str, signature: str) -> bool:
+    basestring = f"v0:{timestamp}:{body.decode()}"
+    expected = "v0=" + hmac.new(
+        config.slack_signing_secret.encode(), basestring.encode(), hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
 @app.route("/api/slack/interactions", methods=["POST"])
 def slack_interactions():
+    raw_body = flask_request.get_data()
+    timestamp = flask_request.headers.get("X-Slack-Request-Timestamp", "")
+    signature = flask_request.headers.get("X-Slack-Signature", "")
+
+    if not _verify_slack_signature(raw_body, timestamp, signature):
+        return {"error": "invalid signature"}, 403
+
+    try:
+        payload = json.loads(flask_request.form.get("payload", "{}"))
+    except Exception:
+        payload = {}
+
+    # Fast path for button actions: call views_open before Bolt's synchronous
+    # dispatch consumes time. This fires within ~50ms of the request arriving,
+    # well inside Slack's 3-second trigger_id window even on cold starts.
+    if payload.get("type") == "block_actions":
+        for action in payload.get("actions", []):
+            if action.get("action_id") in _BUTTON_ACTION_IDS:
+                from slack_sdk import WebClient
+                from bot.handlers import _build_modal_for_action
+                trigger_id = payload.get("trigger_id", "")
+                team_id = payload.get("team", {}).get("id", "")
+                user_id = payload.get("user", {}).get("id", "")
+                try:
+                    btn = json.loads(action.get("value", "{}"))
+                    channel_id = btn.get("channel_id") or payload.get("container", {}).get("channel_id", "")
+                except Exception:
+                    channel_id = payload.get("container", {}).get("channel_id", "")
+                mode = "experts" if "experts" in action.get("action_id", "") else "products"
+                wc = WebClient(token=config.slack_bot_token)
+                try:
+                    wc.views_open(trigger_id=trigger_id, view=_build_modal_for_action(mode, team_id, user_id, channel_id))
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error("Fast-path views_open failed: %s", e)
+                    try:
+                        wc.chat_postEphemeral(
+                            channel=channel_id or team_id,
+                            user=user_id,
+                            text="⏱ The bot was starting up. Please click the button again.",
+                        )
+                    except Exception:
+                        pass
+                break
+
     return slack_handler.handle(flask_request)
 
 

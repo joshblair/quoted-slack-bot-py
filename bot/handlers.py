@@ -19,6 +19,10 @@ from bot.config import get_config
 logger = logging.getLogger(__name__)
 
 
+def _build_modal_for_action(mode: str, team_id: str, user_id: str, channel_id: str) -> dict:
+    return _build_modal(mode, team_id, user_id, channel_id)
+
+
 def _build_connect_url(base_url: str, team_id: str, user_id: str) -> str:
     return f"{base_url.rstrip('/')}/connect?slack_team_id={team_id}&slack_user_id={user_id}"
 
@@ -222,60 +226,23 @@ def register_handlers(app: App) -> None:
         )
 
     # ------------------------------------------------------------------
-    # Button: Call for Experts
+    # Button: Call for Experts / Call for Products
+    # views_open is fired in the Flask route before Bolt dispatch to beat
+    # the 3-second trigger_id window. These handlers just ack and log.
     # ------------------------------------------------------------------
     @app.action("quoted_call_experts")
-    def handle_experts_button(ack, body, client):
+    def handle_experts_button(ack, body):
         ack()
-        _open_modal(body, client, "experts")
+        _log_button_click(body, "experts")
 
-    # ------------------------------------------------------------------
-    # Button: Call for Products
-    # ------------------------------------------------------------------
     @app.action("quoted_call_products")
-    def handle_products_button(ack, body, client):
+    def handle_products_button(ack, body):
         ack()
-        _open_modal(body, client, "products")
+        _log_button_click(body, "products")
 
-    def _open_modal(body: dict, client, mode: str) -> None:
+    def _log_button_click(body: dict, mode: str) -> None:
         team_id = body.get("team", {}).get("id", "")
         user_id = body.get("user", {}).get("id", "")
-        trigger_id = body.get("trigger_id", "")
-        # Prefer channel_id embedded in the button value (set by slash command),
-        # fall back to container.channel_id for messages posted via chat.postMessage.
-        try:
-            btn_value = json.loads((body.get("actions") or [{}])[0].get("value", "{}"))
-            channel_id = btn_value.get("channel_id") or body.get("container", {}).get("channel_id")
-        except Exception:
-            channel_id = body.get("container", {}).get("channel_id")
-
-        # Call views_open immediately — trigger_id expires in 3 seconds.
-        # Log after so MongoDB latency doesn't consume the window.
-        try:
-            client.views_open(trigger_id=trigger_id, view=_build_modal(mode, team_id, user_id, channel_id))
-        except Exception as exc:
-            logger.error("Failed to open modal: %s", exc)
-            store.append_action_log(
-                action="slack.button_click",
-                source="slack",
-                summary="Failed to open modal.",
-                status="error",
-                slack_team_id=team_id,
-                slack_user_id=user_id,
-                details={"error": str(exc)},
-            )
-            # On cold start the trigger_id expires — nudge the user to click again.
-            try:
-                client.chat_postEphemeral(
-                    channel=channel_id or team_id,
-                    user=user_id,
-                    text="⏱ The bot was starting up. Please click the button again.",
-                )
-            except Exception:
-                pass
-            return
-
-        # views_open succeeded — now warm MongoDB (user is filling the form).
         store.append_action_log(
             action="slack.button_click",
             source="slack",
@@ -284,7 +251,6 @@ def register_handlers(app: App) -> None:
             slack_user_id=user_id,
             details={"mode": mode},
         )
-        # Pre-warm connection for the upcoming modal submit.
         try:
             store.list_posts()
         except Exception:
