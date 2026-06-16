@@ -64,13 +64,13 @@ def _sessions() -> Collection:
 
 def _posts() -> Collection:
     col = _db()["posts"]
-    col.create_index([("createdAt", DESCENDING)], background=True)
+    _try_create_index(col, [("createdAt", DESCENDING)])
     return col
 
 
 def _logs() -> Collection:
     col = _db()["action_logs"]
-    col.create_index([("createdAt", DESCENDING)], background=True)
+    _try_create_index(col, [("createdAt", DESCENDING)])
     return col
 
 
