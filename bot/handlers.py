@@ -246,14 +246,6 @@ def register_handlers(app: App) -> None:
         # Log after so MongoDB latency doesn't consume the window.
         try:
             client.views_open(trigger_id=trigger_id, view=_build_modal(mode, team_id, user_id, channel_id))
-            store.append_action_log(
-                action="slack.button_click",
-                source="slack",
-                summary=f"Opened {'Call for Experts' if mode == 'experts' else 'Call for Products'} modal.",
-                slack_team_id=team_id,
-                slack_user_id=user_id,
-                details={"mode": mode},
-            )
         except Exception as exc:
             logger.error("Failed to open modal: %s", exc)
             store.append_action_log(
@@ -265,6 +257,22 @@ def register_handlers(app: App) -> None:
                 slack_user_id=user_id,
                 details={"error": str(exc)},
             )
+            return
+
+        # views_open succeeded — now warm MongoDB (user is filling the form).
+        store.append_action_log(
+            action="slack.button_click",
+            source="slack",
+            summary=f"Opened {'Call for Experts' if mode == 'experts' else 'Call for Products'} modal.",
+            slack_team_id=team_id,
+            slack_user_id=user_id,
+            details={"mode": mode},
+        )
+        # Pre-warm connection for the upcoming modal submit.
+        try:
+            store.list_posts()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Modal submission
